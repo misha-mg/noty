@@ -12,6 +12,8 @@ const firebaseConfig = {
   measurementId: "G-MB5J0Y3MNP"
 };
 
+// Initialize Firebase app in service worker
+firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // Optional: customize background notifications shown by the SW.

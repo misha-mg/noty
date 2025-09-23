@@ -3,12 +3,13 @@ import { getMessaging, getToken, onMessage, isSupported } from "firebase/messagi
 
 // 1) Init Firebase
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDZmPVEJhZsFvvEgdqXk-YnGZH1PFXUjS4",
+  authDomain: "notofications-push-test.firebaseapp.com",
+  projectId: "notofications-push-test",
+  storageBucket: "notofications-push-test.firebasestorage.app",
+  messagingSenderId: "809930765442",
+  appId: "1:809930765442:web:deff74bea605f951c5309b",
+  measurementId: "G-MB5J0Y3MNP"
 };
 const app = initializeApp(firebaseConfig);
 
@@ -37,7 +38,7 @@ async function init() {
 
   // 5) Get FCM token (use your Web Push key)
   const messaging = getMessaging(app);
-  const vapidKey = "YOUR_PUBLIC_VAPID_KEY_FROM_FIREBASE_CONSOLE";
+  const vapidKey = "BLg1riNSPL56-dd3dX-X7uPLeX-MSjJo_2OePWSX96tBd5cBlAvGbQ3-jnR4-KJ95gbIjQy6K6-bj-MBdgOlMYM";
   const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: await navigator.serviceWorker.getRegistration() });
   console.log("FCM token:", token);
 
@@ -60,7 +61,7 @@ init().catch(console.error);
 // Minimal UI
 document.body.innerHTML = `
   <main style="font-family: system-ui; padding: 24px;">
-    <h1>PWA + Firebase Push</h1>
+    <h1>PWA + Firebase Push 1</h1>
     <p>Open DevTools console to see your FCM token.</p>
     <div id="log" style="margin-top:1rem; padding:1rem; border:1px solid #ddd; border-radius:8px;">No messages yet.</div>
     <button id="installBtn" style="margin-top:1rem;">Install PWA</button>
