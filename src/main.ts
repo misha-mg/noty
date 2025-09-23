@@ -42,6 +42,44 @@ async function init() {
   const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: await navigator.serviceWorker.getRegistration() });
   console.log("FCM token:", token);
 
+  // Display token in UI for mobile access
+  const tokenDiv = document.getElementById("token")!;
+  if (token) {
+    tokenDiv.innerHTML = `
+      <div style="background: #f5f5f5; padding: 10px; border-radius: 8px; word-break: break-all; font-size: 12px; margin-bottom: 10px;">
+        ${token}
+      </div>
+      <button id="copyTokenBtn" style="padding: 8px 16px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        Copy Token
+      </button>
+    `;
+    
+    // Add copy functionality
+    document.getElementById("copyTokenBtn")?.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(token);
+        const btn = document.getElementById("copyTokenBtn")!;
+        btn.textContent = "Copied!";
+        setTimeout(() => btn.textContent = "Copy Token", 2000);
+      } catch (err) {
+        console.error("Copy failed:", err);
+        // Fallback for older browsers
+        const textArea = document.createElement("textarea");
+        textArea.value = token;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        
+        const btn = document.getElementById("copyTokenBtn")!;
+        btn.textContent = "Copied!";
+        setTimeout(() => btn.textContent = "Copy Token", 2000);
+      }
+    });
+  } else {
+    tokenDiv.innerHTML = '<p style="color: red;">Failed to generate FCM token</p>';
+  }
+
   // Save token to your backend if you need to target this device later
 
   // 6) Foreground messages
@@ -60,11 +98,24 @@ init().catch(console.error);
 
 // Minimal UI
 document.body.innerHTML = `
-  <main style="font-family: system-ui; padding: 24px;">
-    <h1>PWA + Firebase Push 1</h1>
-    <p>Open DevTools console to see your FCM token.</p>
-    <div id="log" style="margin-top:1rem; padding:1rem; border:1px solid #ddd; border-radius:8px;">No messages yet.</div>
-    <button id="installBtn" style="margin-top:1rem;">Install PWA</button>
+  <main style="font-family: system-ui; padding: 24px; max-width: 600px; margin: 0 auto;">
+    <h1>PWA + Firebase Push</h1>
+    
+    <div style="margin-bottom: 2rem;">
+      <h3 style="margin-bottom: 10px;">FCM Token:</h3>
+      <div id="token" style="margin-bottom: 10px;">
+        <p style="color: #666;">Loading token...</p>
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 2rem;">
+      <h3 style="margin-bottom: 10px;">Messages:</h3>
+      <div id="log" style="padding:1rem; border:1px solid #ddd; border-radius:8px; background: #fafafa;">No messages yet.</div>
+    </div>
+    
+    <button id="installBtn" style="padding: 12px 24px; background: #4285f4; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+      Install PWA
+    </button>
   </main>
 `;
 
