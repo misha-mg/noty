@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 
-// Import Firebase compat for firebase.messaging().requestPermission() support
+// Firebase compat for Apple devices firebase.messaging().requestPermission() support
 declare global {
   interface Window {
     firebase: any;
@@ -314,44 +314,70 @@ Continue anyway to test?`;
       return;
     }
 
-    // 4) Ask for Notification permission with Firebase messaging
+    // 4) Ask for Notification permission
     let permission;
     try {
-      // Firebase messaging permission (using compat API for firebase.messaging().requestPermission)
-      console.log("🔔 Requesting notification permission via Firebase messaging...");
-      
-      try {
-        // Use Firebase messaging requestPermission (compat style) - the method you requested!
-        if (window.firebase && window.firebase.messaging) {
-          // Initialize Firebase compat messaging
+      // Use Firebase messaging requestPermission for Apple devices
+      if (isSafari() || isIOS()) {
+        console.log("🍎 Apple device detected - using firebase.messaging().requestPermission()");
+        
+        try {
+          // Check if Firebase compat is available (loaded via script tags)
+          if (!window.firebase) {
+            console.log("🔥 Loading Firebase compat for Apple devices...");
+            
+            // Dynamically load Firebase compat scripts
+            const loadScript = (src: string): Promise<void> => {
+              return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error(`Failed to load ${src}`));
+                document.head.appendChild(script);
+              });
+            };
+            
+            await loadScript('https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js');
+            await loadScript('https://www.gstatic.com/firebasejs/10.12.3/firebase-messaging-compat.js');
+            
+            // Wait a bit for scripts to initialize
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          // Initialize Firebase compat if not already done
           if (!window.firebase.apps?.length) {
             window.firebase.initializeApp(firebaseConfig);
           }
           
           const messagingCompat = window.firebase.messaging();
           
-          // firebase.messaging().requestPermission() - exactly as requested
-          console.log("🔥 Using firebase.messaging().requestPermission()...");
+          console.log("🔥 Calling firebase.messaging().requestPermission() for Apple device...");
           permission = await messagingCompat.requestPermission();
-          console.log("✅ Permission granted via firebase.messaging().requestPermission():", permission);
           
-        } else {
-          // Fallback: Use standard API if compat not available
-          console.log("⚠️ Firebase compat not available, using standard API...");
+          // Show result as alert for Apple devices
+          alert(`🍎 Apple Firebase Permission Result: ${permission}
+          
+Status: ${permission === 'granted' ? '✅ Permission Granted!' : '❌ Permission Denied'}
+
+Firebase messaging permission request completed.
+${permission === 'granted' ? 'FCM token generation will proceed.' : 'Notifications are blocked.'}`);
+          
+          console.log("✅ firebase.messaging().requestPermission() result:", permission);
+          
+        } catch (firebasePermError) {
+          console.warn("firebase.messaging().requestPermission() failed, using standard API:", firebasePermError);
+          
+          // Fallback to standard permission request
           permission = await Notification.requestPermission();
-          console.log("✅ Permission granted via standard Notification.requestPermission():", permission);
+          
+          alert(`🍎 Apple Fallback Permission Result: ${permission}
+          
+Firebase method failed, used standard Notification.requestPermission()
+Status: ${permission === 'granted' ? '✅ Permission Granted!' : '❌ Permission Denied'}`);
         }
-        
-        // Additional Firebase messaging context logging
-        if (permission === "granted") {
-          console.log("🔥 Firebase messaging permission ready for token generation");
-        }
-        
-      } catch (permError) {
-        console.warn("Firebase permission request failed:", permError);
-        
-        // Fallback approach
-        console.log("⚠️ Falling back to direct permission request...");
+      } else {
+        // Standard permission request for non-Apple devices
+        console.log("🖥️ Non-Apple device - using standard Notification.requestPermission()");
         permission = await Notification.requestPermission();
       }
       
@@ -370,7 +396,7 @@ Continue anyway to test?`;
       return;
     }
     
-    console.log("✅ Firebase messaging notification permission granted:", permission);
+    console.log("✅ Notification permission granted:", permission);
 
     // 5) Get FCM token with comprehensive error handling
     try {
