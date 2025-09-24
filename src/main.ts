@@ -21,6 +21,43 @@ function isIOS(): boolean {
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 }
 
+function getSafariVersion(): number | null {
+  const match = navigator.userAgent.match(/Version\/(\d+)/);
+  return match ? parseInt(match[1]) : null;
+}
+
+function checkSafariPushSupport(): { supported: boolean; method: string; instructions: string } {
+  if (!isSafari() && !isIOS()) {
+    return { supported: true, method: 'standard', instructions: '' };
+  }
+
+  const safariVersion = getSafariVersion();
+  
+  // Check for various Safari push implementations
+  if ('serviceWorker' in navigator && 'PushManager' in window) {
+    return { 
+      supported: true, 
+      method: 'push-api', 
+      instructions: 'Enable "Push API" in Safari Experimental Features' 
+    };
+  }
+  
+  // Safari 16+ might use Declarative Web Push
+  if (safariVersion && safariVersion >= 16) {
+    return { 
+      supported: true, 
+      method: 'declarative', 
+      instructions: 'Enable "Declarative Web Push" in Safari Experimental Features' 
+    };
+  }
+  
+  return { 
+    supported: false, 
+    method: 'none', 
+    instructions: 'Safari push notifications require Safari 16+ with experimental features enabled' 
+  };
+}
+
 function showError(message: string, error?: any) {
   console.error(message, error);
   
@@ -32,11 +69,29 @@ function showError(message: string, error?: any) {
   
   // Add Safari-specific instructions
   if (isSafari() || isIOS()) {
-    alertMessage += `\n\n🍎 Safari Users: To enable push notifications, you need to:
-1. Open Safari Settings
-2. Go to Advanced > Experimental Features
-3. Enable "Push API"
-4. Restart Safari and try again`;
+    const pushSupport = checkSafariPushSupport();
+    const safariVersion = getSafariVersion();
+    
+    alertMessage += `\n\n🍎 Safari Users (v${safariVersion || 'unknown'}):`;
+    
+    if (pushSupport.method === 'declarative') {
+      alertMessage += `\n\n📱 For Declarative Web Push:
+1. Safari Settings → Advanced → Experimental Features
+2. Enable "Declarative Web Push" 
+3. Restart Safari
+4. Add app to Home Screen (required for notifications)
+
+⚠️ Note: FCM may not work with Declarative Web Push.
+Consider using Safari's native push service instead.`;
+    } else if (pushSupport.method === 'push-api') {
+      alertMessage += `\n\n📱 For Push API:
+1. Safari Settings → Advanced → Experimental Features  
+2. Enable "Push API"
+3. Restart Safari and try again`;
+    } else {
+      alertMessage += `\n\n❌ Safari version ${safariVersion} may not support push notifications.
+Try updating Safari or use Chrome/Firefox for testing.`;
+    }
   }
   
   alert(alertMessage);
@@ -90,16 +145,95 @@ function updateTokenUI(token: string | null, error?: string) {
   }
 }
 
+async function trySafariNativePush() {
+  try {
+    console.log("🍎 Attempting Safari native push registration...");
+    
+    // For Declarative Web Push, we need to be installed as PWA
+    const pushSupport = checkSafariPushSupport();
+    
+    if (pushSupport.method === 'declarative') {
+      updateTokenUI(null, `Safari Declarative Web Push detected. 
+      
+Steps to enable:
+1. Enable "Declarative Web Push" in Safari experimental features
+2. Add this app to Home Screen
+3. Notifications will work through Safari's system
+
+Note: FCM (Firebase) tokens may not work with this method.`);
+      return;
+    }
+    
+    // Try direct push manager subscription for Safari
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        try {
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: null // Safari may not need VAPID key
+          });
+          
+          const endpoint = subscription.endpoint;
+          console.log("✅ Safari push subscription created:", endpoint);
+          
+          updateTokenUI(endpoint, "Safari native push subscription (not FCM token)");
+          return;
+        } catch (subscribeError) {
+          console.warn("Safari push subscription failed:", subscribeError);
+        }
+      }
+    }
+    
+    // If all else fails, show Safari-specific guidance
+    updateTokenUI(null, `Safari push setup incomplete. Try:
+
+1. Update Safari to latest version
+2. Enable experimental push features
+3. Add app to Home Screen
+4. Test in Chrome/Firefox as alternative
+
+Current Safari version: ${getSafariVersion() || 'unknown'}`);
+    
+  } catch (error) {
+    showError("Safari native push setup failed", error);
+  }
+}
+
 async function init() {
   try {
-    // 1) Safari Push API Check and Instructions
+    // 1) Safari Push Support Check and Instructions
     if (isSafari() || isIOS()) {
-      console.log("🍎 Safari/iOS detected - Push API may require experimental features to be enabled");
+      const pushSupport = checkSafariPushSupport();
+      const safariVersion = getSafariVersion();
       
-      // Show Safari instructions immediately
-      const safariInstructions = `🍎 Safari Push Notifications Setup:
+      console.log(`🍎 Safari/iOS detected - Version: ${safariVersion}, Push method: ${pushSupport.method}`);
+      
+      let safariInstructions = `🍎 Safari Push Notifications Setup (v${safariVersion}):
 
-To use push notifications in Safari, please:
+`;
+
+      if (pushSupport.method === 'declarative') {
+        safariInstructions += `📱 Your Safari uses Declarative Web Push:
+
+1️⃣ Enable Experimental Features:
+   • Safari → Settings → Advanced → Experimental Features
+   • Enable "Declarative Web Push"
+   • Restart Safari
+
+2️⃣ Install as PWA (REQUIRED):
+   • Tap Share button → "Add to Home Screen"
+   • Declarative Web Push only works for installed PWAs
+
+3️⃣ Allow Notifications:
+   • You'll be prompted after installation
+
+⚠️ Important: FCM (Firebase) may not work with Declarative Web Push.
+This app will try FCM first, but consider using Safari's native push service for production.
+
+Continue anyway?`;
+      } else if (pushSupport.method === 'push-api') {
+        safariInstructions += `📱 Your Safari supports Push API:
 
 1️⃣ Enable Experimental Features:
    • Safari → Settings → Advanced → Experimental Features
@@ -112,13 +246,22 @@ To use push notifications in Safari, please:
 
 3️⃣ Install as PWA (recommended):
    • Tap Share button → "Add to Home Screen"
-   • This improves notification reliability
 
 Continue to enable notifications now?`;
+      } else {
+        safariInstructions += `❌ Your Safari version may not support push notifications.
+
+Options:
+• Update Safari to the latest version
+• Try Chrome or Firefox for testing
+• Check if experimental features are available
+
+Continue anyway to test?`;
+      }
    
       const proceedWithSafari = confirm(safariInstructions);
       if (!proceedWithSafari) {
-        updateTokenUI(null, "Setup cancelled. Please enable experimental features and try again.");
+        updateTokenUI(null, "Setup cancelled. Please follow the instructions and try again.");
         return;
       }
     }
@@ -198,6 +341,12 @@ Continue to enable notifications now?`;
       const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
       
       if (!token) {
+        // If FCM fails on Safari, try alternative approaches
+        if (isSafari() || isIOS()) {
+          console.warn("FCM token generation failed on Safari - trying alternative approach");
+          await trySafariNativePush();
+          return;
+        }
         throw new Error("FCM token is empty - check your Firebase configuration");
       }
       
@@ -245,17 +394,36 @@ init().catch((error) => {
 });
 
 // Minimal UI
-const safariWarning = (isSafari() || isIOS()) ? `
+const safariWarning = (isSafari() || isIOS()) ? (() => {
+  const pushSupport = checkSafariPushSupport();
+  const safariVersion = getSafariVersion();
+  
+  if (pushSupport.method === 'declarative') {
+    return `
+    <div style="background: #e7f3ff; border: 1px solid #87ceeb; padding: 15px; border-radius: 8px; margin-bottom: 2rem;">
+      <h4 style="margin: 0 0 10px 0; color: #1e6ba0;">🍎 Safari Declarative Web Push (v${safariVersion})</h4>
+      <p style="margin: 0; color: #1e6ba0; font-size: 14px;">
+        <strong>Setup Required:</strong><br/>
+        1. Settings → Advanced → Experimental Features<br/>
+        2. Enable "Declarative Web Push"<br/>
+        3. Restart Safari<br/>
+        4. <strong>Add to Home Screen (Required!)</strong><br/><br/>
+        ⚠️ <em>FCM may not work - this is experimental</em>
+      </p>
+    </div>`;
+  } else {
+    return `
     <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin-bottom: 2rem;">
-      <h4 style="margin: 0 0 10px 0; color: #856404;">🍎 Safari Setup Required</h4>
+      <h4 style="margin: 0 0 10px 0; color: #856404;">🍎 Safari Setup Required (v${safariVersion})</h4>
       <p style="margin: 0; color: #856404; font-size: 14px;">
         To enable push notifications in Safari:<br/>
         1. Settings → Advanced → Experimental Features<br/>
-        2. Enable "Push API"<br/>
+        2. Enable "Push API" or "Declarative Web Push"<br/>
         3. Restart Safari
       </p>
-    </div>
-` : '';
+    </div>`;
+  }
+})() : '';
 
 document.body.innerHTML = `
   <main style="font-family: system-ui; padding: 24px; max-width: 600px; margin: 0 auto;">
