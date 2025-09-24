@@ -13,9 +13,33 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 
+function isSafari(): boolean {
+  return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+}
+
+function isIOS(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+
 function showError(message: string, error?: any) {
   console.error(message, error);
-  alert(`❌ ${message}${error ? `\n\nDetails: ${error.message || error}` : ''}`);
+  
+  let alertMessage = `❌ ${message}`;
+  
+  if (error) {
+    alertMessage += `\n\nDetails: ${error.message || error}`;
+  }
+  
+  // Add Safari-specific instructions
+  if (isSafari() || isIOS()) {
+    alertMessage += `\n\n🍎 Safari Users: To enable push notifications, you need to:
+1. Open Safari Settings
+2. Go to Advanced > Experimental Features
+3. Enable "Push API"
+4. Restart Safari and try again`;
+  }
+  
+  alert(alertMessage);
 }
 
 function updateTokenUI(token: string | null, error?: string) {
@@ -68,6 +92,37 @@ function updateTokenUI(token: string | null, error?: string) {
 
 async function init() {
   try {
+    // 1) Safari Push API Check and Instructions
+    if (isSafari() || isIOS()) {
+      console.log("🍎 Safari/iOS detected - Push API may require experimental features to be enabled");
+      
+      // Show Safari instructions immediately
+      const safariInstructions = `🍎 Safari Push Notifications Setup:
+
+To use push notifications in Safari, please:
+
+1️⃣ Enable Experimental Features:
+   • Safari → Settings → Advanced → Experimental Features
+   • Enable "Push API"
+   • Restart Safari
+
+2️⃣ Allow Notifications:
+   • You'll be prompted to allow notifications
+   • Choose "Allow" when prompted
+
+3️⃣ Install as PWA (recommended):
+   • Tap Share button → "Add to Home Screen"
+   • This improves notification reliability
+
+Continue to enable notifications now?`;
+   
+      const proceedWithSafari = confirm(safariInstructions);
+      if (!proceedWithSafari) {
+        updateTokenUI(null, "Setup cancelled. Please enable experimental features and try again.");
+        return;
+      }
+    }
+
     // 2) Register service workers
     if ("serviceWorker" in navigator) {
       try {
@@ -99,8 +154,13 @@ async function init() {
     }
     
     if (!supported) {
-      showError("FCM is not supported in this browser (likely Safari/iOS)");
-      updateTokenUI(null, "FCM not supported in this browser");
+      if (isSafari() || isIOS()) {
+        showError("FCM Push API not available in Safari. Please enable 'Push API' in Safari's Experimental Features and restart Safari.");
+        updateTokenUI(null, "Push API not enabled in Safari experimental features");
+      } else {
+        showError("FCM is not supported in this browser");
+        updateTokenUI(null, "FCM not supported in this browser");
+      }
       return;
     }
 
@@ -185,9 +245,23 @@ init().catch((error) => {
 });
 
 // Minimal UI
+const safariWarning = (isSafari() || isIOS()) ? `
+    <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin-bottom: 2rem;">
+      <h4 style="margin: 0 0 10px 0; color: #856404;">🍎 Safari Setup Required</h4>
+      <p style="margin: 0; color: #856404; font-size: 14px;">
+        To enable push notifications in Safari:<br/>
+        1. Settings → Advanced → Experimental Features<br/>
+        2. Enable "Push API"<br/>
+        3. Restart Safari
+      </p>
+    </div>
+` : '';
+
 document.body.innerHTML = `
   <main style="font-family: system-ui; padding: 24px; max-width: 600px; margin: 0 auto;">
     <h1>PWA + Firebase Push</h1>
+    
+    ${safariWarning}
     
     <div style="margin-bottom: 2rem;">
       <h3 style="margin-bottom: 10px;">FCM Token:</h3>
